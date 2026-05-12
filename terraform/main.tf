@@ -4,5 +4,6 @@ resource "aws_s3_bucket" "demo_bucket" {
   tags = {
     Name        = "terraform-demo"
     Environment = "demo"
+    Owner       = "github-actions-test"
   }
 }
