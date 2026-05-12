@@ -28,6 +28,12 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
+      - name: Install OPA
+        run: |
+          curl -L -o opa https://openpolicyagent.org/downloads/latest/opa_linux_amd64_static
+          chmod +x opa
+          sudo mv opa /usr/local/bin/
+
       - name: Terraform Init
         run: terraform -chdir=terraform init -input=false
 
@@ -39,8 +45,26 @@ jobs:
 
       - name: Terraform Plan
         if: github.event_name == 'pull_request'
-        run: terraform -chdir=terraform plan
+        run: |
+          terraform -chdir=terraform plan -out=tfplan -input=false
+          terraform -chdir=terraform show -json tfplan > terraform/tfplan.json
+
+      - name: Evaluate OPA Policies
+        if: github.event_name == 'pull_request'
+        run: |
+          RESULT=$(opa eval \
+            --format raw \
+            --data policies \
+            --input terraform/tfplan.json \
+            "data.terraform.security.deny")
+
+          echo "$RESULT"
+
+          if [ "$RESULT" != "[]" ]; then
+            echo "OPA policy violations detected"
+            exit 1
+          fi
 
       - name: Terraform Apply
         if: github.ref == 'refs/heads/main'
-        run: terraform -chdir=terraform apply -auto-approve
+        run: terraform -chdir=terraform apply -auto-approve -input=false
